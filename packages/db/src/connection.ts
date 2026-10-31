@@ -1,4 +1,11 @@
+import dns from "node:dns";
 import mongoose from "mongoose";
+
+// On Windows, Node's default DNS resolver blocks SRV record lookups needed
+// for mongodb+srv:// URIs. Switching to Google's public DNS fixes this.
+if (process.platform === "win32") {
+  dns.setServers(["8.8.8.8", "8.8.4.4"]);
+}
 
 export interface ConnectOptions {
   uri: string;
