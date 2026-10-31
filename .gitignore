@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+jspm_packages/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.test.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials.json
+
+# Runtime data
+storage/
+uploads/
+data/
+.mongo/
+tmp/
+temp/
+
+# Tests and coverage
+coverage/
+.nyc_output/
+playwright-report/
+blob-report/
+test-results/
+.playwright/
+.vitest/
+
+# Caches
+.cache/
+.eslintcache
+.prettiercache
+.npm/
+.npm-cache/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Misc
+*.tgz
+.vercel/

@@ -1,0 +1,19 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: brightloop-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - brightloop-mongo:/data/db
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: brightloop-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  brightloop-mongo:

@@ -1,0 +1,41 @@
+{
+  "name": "brightloop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BrightLoop - self-hosted usage-based billing platform",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c cyan,magenta,green \"pnpm --filter @brightloop/api dev\" \"pnpm --filter @brightloop/api dev:worker\" \"pnpm --filter @brightloop/web dev\"",
+    "dev:api": "pnpm --filter @brightloop/api dev",
+    "dev:web": "pnpm --filter @brightloop/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:seed": "pnpm --filter @brightloop/api seed",
+    "db:migrate": "pnpm --filter @brightloop/api migrate",
+    "e2e:flow": "tsx scripts/e2e-flow.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.5",
+    "@types/supertest": "^6.0.2",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.18.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@11.0.8"
+}
