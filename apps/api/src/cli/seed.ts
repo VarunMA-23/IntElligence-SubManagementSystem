@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import {
+  AddOn,
   AppliedCoupon,
   BillableMetric,
   Coupon,
@@ -15,6 +16,7 @@ import {
   Subscription,
   Tenant,
   User,
+  Webhook,
 } from "@brightloop/db";
 import { loadConfig } from "../config/env.js";
 import { startDatabase } from "../lib/database.js";
@@ -24,17 +26,21 @@ import { createPlan, publishPlan } from "../services/plan-service.js";
 import { createSubscription } from "../services/subscription-service.js";
 import { ingestEvents } from "../services/metering-service.js";
 import { generateInvoices } from "../services/invoice-service.js";
+import { encryptSecret } from "@brightloop/integrations";
 
+console.log("Starting comprehensive BrightLoop test data seed...");
 const config = loadConfig();
 const database = await startDatabase(config);
 
 try {
+  // 1. Primary Demo User & Additional Team Members
+  console.log("Creating users and organization...");
   let user = await User.findOne({ email: "demo@brightloop.local" });
   if (!user) {
     user = await User.create({
       email: "demo@brightloop.local",
       passwordHash: await hashPassword("Demo1234"),
-      name: "BrightLoop Demo",
+      name: "BrightLoop Demo Admin",
       emailVerifiedAt: new Date(),
     });
   } else {
@@ -43,8 +49,30 @@ try {
     await user.save();
   }
 
+  // Secondary users for team testing
+  let memberUser = await User.findOne({ email: "member@brightloop.local" });
+  if (!memberUser) {
+    memberUser = await User.create({
+      email: "member@brightloop.local",
+      passwordHash: await hashPassword("Demo1234"),
+      name: "Alice Developer",
+      emailVerifiedAt: new Date(),
+    });
+  }
+
+  let viewerUser = await User.findOne({ email: "viewer@brightloop.local" });
+  if (!viewerUser) {
+    viewerUser = await User.create({
+      email: "viewer@brightloop.local",
+      passwordHash: await hashPassword("Demo1234"),
+      name: "Bob Finance Analyst",
+      emailVerifiedAt: new Date(),
+    });
+  }
+
+  // 2. Organization & Tenant
   let org = await Organization.findOne({ slug: "brightloop-demo" });
-  let tenant;
+  let tenant: any;
   if (!org) {
     const created = await createOrganization(String(user._id), {
       name: "BrightLoop Demo",
@@ -57,7 +85,7 @@ try {
   } else {
     tenant = await Tenant.findOne({ orgId: String(org._id) }).sort({ createdAt: 1 });
   }
-  if (!tenant) throw new Error("seed tenant not found");
+  if (!tenant) throw new Error("Seed tenant not found");
 
   const ctx = {
     tenantId: String(tenant._id),
@@ -67,122 +95,180 @@ try {
     actorId: String(user._id),
   };
 
-  const entity =
-    (await InvoicingEntity.findOne({ tenantId: ctx.tenantId, isDefault: true })) ??
+  // Add members to org
+  await OrganizationMember.updateOne(
+    { orgId: ctx.orgId, userId: ctx.userId },
+    { $set: { role: "owner" } },
+    { upsert: true }
+  );
+  await OrganizationMember.updateOne(
+    { orgId: ctx.orgId, userId: String(memberUser._id) },
+    { $set: { role: "member" } },
+    { upsert: true }
+  );
+  await OrganizationMember.updateOne(
+    { orgId: ctx.orgId, userId: String(viewerUser._id) },
+    { $set: { role: "viewer" } },
+    { upsert: true }
+  );
+
+  // 3. Invoicing Entities (US & EU)
+  console.log("Setting up invoicing entities...");
+  const usEntity =
+    (await InvoicingEntity.findOne({ tenantId: ctx.tenantId, name: "BrightLoop Inc. (US)" })) ??
     (await InvoicingEntity.create({
       tenantId: ctx.tenantId,
-      name: "BrightLoop Demo Inc.",
-      legalName: "BrightLoop Demo Inc.",
+      name: "BrightLoop Inc. (US)",
+      legalName: "BrightLoop Technologies Inc.",
       address: {
-        line1: "100 Market Street",
+        line1: "100 Market Street, Suite 400",
         city: "San Francisco",
         state: "CA",
         postal_code: "94105",
         country: "US",
       },
-      taxId: "US-DEMO-001",
+      taxId: "US-94-3829104",
       defaultCurrency: "USD",
       netTerms: 30,
       isDefault: true,
     }));
 
-  let family = await ProductFamily.findOne({ tenantId: ctx.tenantId, alias: "platform" });
-  if (!family) family = await ProductFamily.create({ tenantId: ctx.tenantId, name: "Platform", alias: "platform" });
-
-  async function product(alias: string, name: string, feeType: string) {
-    let record = await Product.findOne({ tenantId: ctx.tenantId, alias });
-    if (!record) {
-      record = await Product.create({
-        tenantId: ctx.tenantId,
-        familyId: String(family!._id),
-        name,
-        alias,
-        feeType,
-        description: `${name} product`,
-      });
-    }
-    return record;
-  }
-
-  const platform = await product("platform-access", "Platform access", "RATE");
-  const overage = await product("api-overage", "API overage", "USAGE");
-
-  async function feature(code: string, name: string, type: "BOOLEAN" | "METERED") {
-    let record = await Feature.findOne({ tenantId: ctx.tenantId, code });
-    if (!record) record = await Feature.create({ tenantId: ctx.tenantId, name, code, featureType: type });
-    return record;
-  }
-
-  const apiFeature = await feature("api_calls", "API calls", "BOOLEAN");
-  const requestFeature = await feature("api_requests", "API requests", "METERED");
-
-  let metric = await BillableMetric.findOne({ tenantId: ctx.tenantId, code: "api_requests" });
-  if (!metric) {
-    metric = await BillableMetric.create({
+  const euEntity =
+    (await InvoicingEntity.findOne({ tenantId: ctx.tenantId, name: "BrightLoop Europe B.V." })) ??
+    (await InvoicingEntity.create({
       tenantId: ctx.tenantId,
-      name: "API requests",
-      code: "api_requests",
-      aggregation: "COUNT",
-      field: null,
-      segmentationKeys: ["endpoint"],
+      name: "BrightLoop Europe B.V.",
+      legalName: "BrightLoop Europe B.V.",
+      address: {
+        line1: "Keizersgracht 421",
+        city: "Amsterdam",
+        state: "NH",
+        postal_code: "1016 EK",
+        country: "NL",
+      },
+      taxId: "NL861234567B01",
+      defaultCurrency: "EUR",
+      netTerms: 15,
+      isDefault: false,
+    }));
+
+  // 4. Product Families
+  console.log("Setting up catalog (families, products, metrics, features)...");
+  let platformFamily = await ProductFamily.findOne({ tenantId: ctx.tenantId, alias: "platform" });
+  if (!platformFamily) {
+    platformFamily = await ProductFamily.create({
+      tenantId: ctx.tenantId,
+      name: "Cloud Platform",
+      alias: "platform",
     });
   }
 
-  async function plan(input: {
+  let aiFamily = await ProductFamily.findOne({ tenantId: ctx.tenantId, alias: "ai-services" });
+  if (!aiFamily) {
+    aiFamily = await ProductFamily.create({
+      tenantId: ctx.tenantId,
+      name: "AI & Intelligence Suite",
+      alias: "ai-services",
+    });
+  }
+
+  // 5. Products
+  async function ensureProduct(familyId: string, alias: string, name: string, feeType: string, description: string) {
+    let p = await Product.findOne({ tenantId: ctx.tenantId, alias });
+    if (!p) {
+      p = await Product.create({
+        tenantId: ctx.tenantId,
+        familyId,
+        name,
+        alias,
+        feeType,
+        description,
+      });
+    }
+    return p;
+  }
+
+  const prodPlatform = await ensureProduct(String(platformFamily._id), "platform-core", "Core Platform Access", "RATE", "Base workspace access");
+  const prodApiUsage = await ensureProduct(String(platformFamily._id), "api-usage", "API Requests Metered", "USAGE", "Per-request API metering");
+  const prodAiCompute = await ensureProduct(String(aiFamily._id), "ai-tokens", "AI Model Tokens", "USAGE", "LLM inference token volume");
+  const prodDedicatedIp = await ensureProduct(String(platformFamily._id), "dedicated-ip", "Dedicated Ingress IP", "RATE", "Add-on dedicated IP");
+
+  // 6. Features
+  async function ensureFeature(code: string, name: string, type: "BOOLEAN" | "METERED") {
+    let f = await Feature.findOne({ tenantId: ctx.tenantId, code });
+    if (!f) {
+      f = await Feature.create({ tenantId: ctx.tenantId, code, name, featureType: type });
+    }
+    return f;
+  }
+
+  const featSso = await ensureFeature("sso_login", "SAML / OIDC Single Sign-On", "BOOLEAN");
+  const featCustomDomains = await ensureFeature("custom_domains", "Custom Domain Mapping", "BOOLEAN");
+  const featApiRequests = await ensureFeature("api_requests", "Monthly API Requests", "METERED");
+  const featAiTokens = await ensureFeature("ai_tokens", "Monthly AI Tokens", "METERED");
+
+  // 7. Billable Metrics
+  async function ensureMetric(code: string, name: string, aggregation: string, field: string | null, keys: string[]) {
+    let m = await BillableMetric.findOne({ tenantId: ctx.tenantId, code });
+    if (!m) {
+      m = await BillableMetric.create({
+        tenantId: ctx.tenantId,
+        code,
+        name,
+        aggregation,
+        field,
+        segmentationKeys: keys,
+      });
+    }
+    return m;
+  }
+
+  const metricApi = await ensureMetric("api_requests", "API Request Count", "COUNT", null, ["endpoint", "method", "status"]);
+  const metricAiTokens = await ensureMetric("ai_tokens", "AI Token Usage", "SUM", "tokens", ["model", "region"]);
+
+  // 8. Add-Ons
+  let addOnDedicatedIp = await AddOn.findOne({ tenantId: ctx.tenantId, alias: "addon-dedicated-ip" });
+  if (!addOnDedicatedIp) {
+    addOnDedicatedIp = await AddOn.create({
+      tenantId: ctx.tenantId,
+      alias: "addon-dedicated-ip",
+      name: "Dedicated Static IP",
+      productId: String(prodDedicatedIp._id),
+      description: "High-reputation static IP for enterprise API pipelines",
+      selfServiceable: true,
+      pricing: { type: "FLAT", rate: "25.00" },
+      entitlements: [],
+    });
+  }
+
+  // 9. Plans (Starter, Growth, Enterprise)
+  console.log("Configuring plans and pricing tiers...");
+  async function createOrGetPlan(planDef: {
     alias: string;
     name: string;
-    base: string;
-    usage: string;
-    rank: number;
+    description: string;
+    baseRate: string;
     trialDays: number;
+    rank: number;
+    components: any[];
+    entitlements: any[];
   }) {
-    let planRecord = await Plan.findOne({ tenantId: ctx.tenantId, alias: input.alias });
+    let planRecord = await Plan.findOne({ tenantId: ctx.tenantId, alias: planDef.alias });
     if (!planRecord) {
       planRecord = await createPlan(ctx, {
-        name: input.name,
-        alias: input.alias,
-        description: `${input.name} monthly subscription`,
+        name: planDef.name,
+        alias: planDef.alias,
+        description: planDef.description,
         plan_type: "STANDARD",
-        product_family_id: String(family!._id),
+        product_family_id: String(platformFamily!._id),
         currency: "USD",
         billing_period: "MONTHLY",
         billing_type: "ADVANCE",
         net_terms: 30,
-        trial_days: input.trialDays,
-        self_service_rank: input.rank,
-        components: [
-          {
-            product_id: String(platform._id),
-            metric_id: null,
-            name: "Platform access",
-            fee_type: "RATE",
-            billing_period: "MONTHLY",
-            billing_type: "ADVANCE",
-            pricing: { type: "FLAT", rate: input.base },
-            order: 0,
-          },
-          {
-            product_id: String(overage._id),
-            metric_id: String(metric._id),
-            name: "API request overage",
-            fee_type: "USAGE",
-            billing_period: "MONTHLY",
-            billing_type: "ARREARS",
-            pricing: { type: "PER_UNIT", rate: input.usage },
-            order: 1,
-          },
-        ],
-        entitlements: [
-          { feature_id: String(apiFeature._id), value: { type: "BOOLEAN", enabled: true } },
-          {
-            feature_id: String(requestFeature._id),
-            value: {
-              type: "METERED",
-              limit: input.alias === "starter" ? 10000 : 100000,
-              reset_period: { type: "BILLING_CYCLE" },
-            },
-          },
-        ],
+        trial_days: planDef.trialDays,
+        self_service_rank: planDef.rank,
+        components: planDef.components,
+        entitlements: planDef.entitlements,
       });
       await publishPlan(ctx, String(planRecord._id), {});
       planRecord = (await Plan.findById(planRecord._id))!;
@@ -190,126 +276,339 @@ try {
     return planRecord;
   }
 
-  const starter = await plan({
+  const starterPlan = await createOrGetPlan({
     alias: "starter",
-    name: "Starter",
-    base: "49.00",
-    usage: "0.01",
+    name: "Developer Starter",
+    description: "Ideal for small teams and early-stage prototypes",
+    baseRate: "29.00",
+    trialDays: 14,
     rank: 1,
-    trialDays: 14,
-  });
-  const growth = await plan({
-    alias: "growth",
-    name: "Growth",
-    base: "199.00",
-    usage: "0.008",
-    rank: 2,
-    trialDays: 14,
-  });
-
-  let customer = await Customer.findOne({ tenantId: ctx.tenantId, alias: "acme" });
-  if (!customer) {
-    customer = await Customer.create({
-      tenantId: ctx.tenantId,
-      alias: "acme",
-      name: "Acme Corporation",
-      invoicingEmails: ["billing@acme.example"],
-      billingEmail: "billing@acme.example",
-      phone: "+1 555 0100",
-      vatNumber: "US-ACME-001",
-      currency: "USD",
-      invoicingEntityId: String(entity._id),
-      billingAddress: {
-        line1: "1 Acme Way",
-        city: "Austin",
-        state: "TX",
-        postal_code: "78701",
-        country: "US",
+    components: [
+      {
+        product_id: String(prodPlatform._id),
+        metric_id: null,
+        name: "Developer Base Access",
+        fee_type: "RATE",
+        billing_period: "MONTHLY",
+        billing_type: "ADVANCE",
+        pricing: { type: "FLAT", rate: "29.00" },
+        order: 0,
       },
-      customTaxes: [{ name: "Sales tax", rate: "8.25" }],
-      isTaxExempt: false,
-    });
-  }
-
-  let coupon = await Coupon.findOne({ tenantId: ctx.tenantId, code: "LAUNCH20" });
-  if (!coupon) {
-    coupon = await Coupon.create({
-      tenantId: ctx.tenantId,
-      code: "LAUNCH20",
-      description: "20% off the first invoice",
-      discount: { type: "PERCENTAGE", percentage: "20" },
-      reusable: true,
-      redemptionLimit: null,
-      planIds: [],
-    });
-  }
-
-  let subscription = await Subscription.findOne({
-    tenantId: ctx.tenantId,
-    customerId: String(customer._id),
-    status: { $in: ["ACTIVE", "TRIAL_ACTIVE"] },
+      {
+        product_id: String(prodApiUsage._id),
+        metric_id: String(metricApi._id),
+        name: "Standard API Invocations",
+        fee_type: "USAGE",
+        billing_period: "MONTHLY",
+        billing_type: "ARREARS",
+        pricing: { type: "PER_UNIT", rate: "0.005" },
+        order: 1,
+      },
+    ],
+    entitlements: [
+      { feature_id: String(featSso._id), value: { type: "BOOLEAN", enabled: false } },
+      { feature_id: String(featCustomDomains._id), value: { type: "BOOLEAN", enabled: false } },
+      { feature_id: String(featApiRequests._id), value: { type: "METERED", limit: 25000, reset_period: { type: "BILLING_CYCLE" } } },
+    ],
   });
-  if (!subscription) {
-    subscription = await createSubscription(ctx, {
-      plan_id: String(starter!._id),
-      customer_id_or_alias: "acme",
-      activation_condition: "ON_START",
-      trial_days: 0,
-      billing_day_anchor: 1,
-      net_terms: 30,
-      coupon_codes: [],
-      add_ons: [],
-      auto_advance_invoices: true,
-      charge_automatically: false,
-      start_date: new Date().toISOString(),
-      purchase_order: "PO-DEMO-1001",
-      invoice_memo: "Thank you for using BrightLoop.",
-    });
+
+  const growthPlan = await createOrGetPlan({
+    alias: "growth",
+    name: "Growth Pro",
+    description: "Designed for scaling products needing higher volume & AI compute",
+    baseRate: "149.00",
+    trialDays: 14,
+    rank: 2,
+    components: [
+      {
+        product_id: String(prodPlatform._id),
+        metric_id: null,
+        name: "Growth Base Access",
+        fee_type: "RATE",
+        billing_period: "MONTHLY",
+        billing_type: "ADVANCE",
+        pricing: { type: "FLAT", rate: "149.00" },
+        order: 0,
+      },
+      {
+        product_id: String(prodApiUsage._id),
+        metric_id: String(metricApi._id),
+        name: "Growth Tier API Invocations",
+        fee_type: "USAGE",
+        billing_period: "MONTHLY",
+        billing_type: "ARREARS",
+        pricing: { type: "PER_UNIT", rate: "0.002" },
+        order: 1,
+      },
+      {
+        product_id: String(prodAiCompute._id),
+        metric_id: String(metricAiTokens._id),
+        name: "AI LLM Tokens",
+        fee_type: "USAGE",
+        billing_period: "MONTHLY",
+        billing_type: "ARREARS",
+        pricing: { type: "PER_UNIT", rate: "0.00002" },
+        order: 2,
+      },
+    ],
+    entitlements: [
+      { feature_id: String(featSso._id), value: { type: "BOOLEAN", enabled: true } },
+      { feature_id: String(featCustomDomains._id), value: { type: "BOOLEAN", enabled: true } },
+      { feature_id: String(featApiRequests._id), value: { type: "METERED", limit: 250000, reset_period: { type: "BILLING_CYCLE" } } },
+      { feature_id: String(featAiTokens._id), value: { type: "METERED", limit: 5000000, reset_period: { type: "BILLING_CYCLE" } } },
+    ],
+  });
+
+  const enterprisePlan = await createOrGetPlan({
+    alias: "enterprise",
+    name: "Enterprise Dedicated",
+    description: "Mission-critical infrastructure with custom SLA and volume pricing",
+    baseRate: "599.00",
+    trialDays: 0,
+    rank: 3,
+    components: [
+      {
+        product_id: String(prodPlatform._id),
+        metric_id: null,
+        name: "Enterprise Base Platform",
+        fee_type: "RATE",
+        billing_period: "MONTHLY",
+        billing_type: "ADVANCE",
+        pricing: { type: "FLAT", rate: "599.00" },
+        order: 0,
+      },
+      {
+        product_id: String(prodApiUsage._id),
+        metric_id: String(metricApi._id),
+        name: "Enterprise Volume API",
+        fee_type: "USAGE",
+        billing_period: "MONTHLY",
+        billing_type: "ARREARS",
+        pricing: { type: "PER_UNIT", rate: "0.001" },
+        order: 1,
+      },
+      {
+        product_id: String(prodAiCompute._id),
+        metric_id: String(metricAiTokens._id),
+        name: "Enterprise AI Inference Tokens",
+        fee_type: "USAGE",
+        billing_period: "MONTHLY",
+        billing_type: "ARREARS",
+        pricing: { type: "PER_UNIT", rate: "0.00001" },
+        order: 2,
+      },
+    ],
+    entitlements: [
+      { feature_id: String(featSso._id), value: { type: "BOOLEAN", enabled: true } },
+      { feature_id: String(featCustomDomains._id), value: { type: "BOOLEAN", enabled: true } },
+      { feature_id: String(featApiRequests._id), value: { type: "METERED", limit: 5000000, reset_period: { type: "BILLING_CYCLE" } } },
+      { feature_id: String(featAiTokens._id), value: { type: "METERED", limit: 50000000, reset_period: { type: "BILLING_CYCLE" } } },
+    ],
+  });
+
+  // 10. Discount Coupons
+  console.log("Setting up promotional coupons...");
+  async function ensureCoupon(code: string, description: string, discount: any) {
+    let c = await Coupon.findOne({ tenantId: ctx.tenantId, code });
+    if (!c) {
+      c = await Coupon.create({
+        tenantId: ctx.tenantId,
+        code,
+        description,
+        discount,
+        reusable: true,
+        redemptionLimit: null,
+        planIds: [],
+      });
+    }
+    return c;
   }
 
+  await ensureCoupon("WELCOME25", "25% discount for first 3 months", { type: "PERCENTAGE", percentage: "25" });
+  await ensureCoupon("FLAT50OFF", "$50 flat discount", { type: "FIXED", amount: "50.00", currency: "USD" });
+
+  // 11. Diverse Customers
+  console.log("Creating multiple diverse customers...");
+  async function ensureCustomer(alias: string, name: string, email: string, vat: string, entityId: string, city: string, state: string, country: string) {
+    let c = await Customer.findOne({ tenantId: ctx.tenantId, alias });
+    if (!c) {
+      c = await Customer.create({
+        tenantId: ctx.tenantId,
+        alias,
+        name,
+        invoicingEmails: [email],
+        billingEmail: email,
+        phone: "+1 555 0199",
+        vatNumber: vat,
+        currency: "USD",
+        invoicingEntityId: entityId,
+        billingAddress: {
+          line1: `100 ${name} Blvd`,
+          city,
+          state,
+          postal_code: "90210",
+          country,
+        },
+        customTaxes: [{ name: "Standard Tax", rate: "8.00" }],
+        isTaxExempt: false,
+      });
+    }
+    return c;
+  }
+
+  const custAcme = await ensureCustomer("acme-corp", "Acme Corporation", "finance@acme.com", "US-ACME-991", String(usEntity._id), "San Jose", "CA", "US");
+  const custCyber = await ensureCustomer("cyber-dynamics", "Cyber Dynamics LLC", "billing@cyberdynamics.io", "US-CYBER-404", String(usEntity._id), "New York", "NY", "US");
+  const custNova = await ensureCustomer("nova-labs", "Nova AI Labs", "accounting@novalabs.ai", "US-NOVA-882", String(usEntity._id), "Austin", "TX", "US");
+  const custEuro = await ensureCustomer("euro-retail", "EuroRetail Group B.V.", "accounts@euroretail.eu", "NL992384712B01", String(euEntity._id), "Rotterdam", "ZH", "NL");
+
+  // 12. Subscriptions for Each Customer
+  console.log("Assigning active subscriptions...");
+  async function ensureSub(customerId: string, alias: string, planId: string, po: string) {
+    let sub = await Subscription.findOne({
+      tenantId: ctx.tenantId,
+      customerId,
+      status: { $in: ["ACTIVE", "TRIAL_ACTIVE"] },
+    });
+    if (!sub) {
+      sub = await createSubscription(ctx, {
+        plan_id: planId,
+        customer_id_or_alias: alias,
+        activation_condition: "ON_START",
+        trial_days: 0,
+        billing_day_anchor: 1,
+        net_terms: 30,
+        coupon_codes: [],
+        add_ons: [],
+        auto_advance_invoices: true,
+        charge_automatically: false,
+        start_date: new Date().toISOString(),
+        purchase_order: po,
+        invoice_memo: `Monthly services subscription for ${alias}`,
+      });
+    }
+    return sub;
+  }
+
+  const subAcme = await ensureSub(String(custAcme._id), "acme-corp", String(starterPlan._id), "PO-ACME-2026");
+  const subCyber = await ensureSub(String(custCyber._id), "cyber-dynamics", String(growthPlan._id), "PO-CYBER-991");
+  const subNova = await ensureSub(String(custNova._id), "nova-labs", String(enterprisePlan._id), "PO-NOVA-5541");
+
+  // 13. Rich Metering & Usage Events
+  console.log("Simulating real-world API & AI usage events...");
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const eventCount = 1250;
-  const events = [];
-  for (let index = 0; index < eventCount; index += 1) {
-    events.push({
-      event_id: `seed-${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${index}`,
+
+  // Ingest API request events for Acme & Cyber
+  const apiEvents: any[] = [];
+  for (let i = 0; i < 350; i++) {
+    apiEvents.push({
+      event_id: `api-seed-acme-${i}`,
       code: "api_requests",
-      customer_id: "acme",
-      timestamp: new Date(monthStart.getTime() + index * 30_000).toISOString(),
-      properties: { endpoint: index % 3 === 0 ? "/v1/search" : index % 3 === 1 ? "/v1/usage" : "/v1/events" },
+      customer_id: "acme-corp",
+      timestamp: new Date(monthStart.getTime() + i * 45_000).toISOString(),
+      properties: {
+        endpoint: i % 4 === 0 ? "/api/v1/search" : i % 4 === 1 ? "/api/v1/invoices" : "/api/v1/customers",
+        status: 200,
+      },
     });
   }
-  for (let offset = 0; offset < events.length; offset += 100) {
+
+  for (let i = 0; i < 600; i++) {
+    apiEvents.push({
+      event_id: `api-seed-cyber-${i}`,
+      code: "api_requests",
+      customer_id: "cyber-dynamics",
+      timestamp: new Date(monthStart.getTime() + i * 30_000).toISOString(),
+      properties: {
+        endpoint: "/api/v1/telemetry",
+        status: 200,
+      },
+    });
+  }
+
+  // AI Inference Token events for Nova Labs
+  const aiEvents: any[] = [];
+  for (let i = 0; i < 200; i++) {
+    aiEvents.push({
+      event_id: `ai-seed-nova-${i}`,
+      code: "ai_tokens",
+      customer_id: "nova-labs",
+      timestamp: new Date(monthStart.getTime() + i * 60_000).toISOString(),
+      properties: {
+        tokens: 1500 + (i % 10) * 200,
+        model: i % 2 === 0 ? "gpt-4o" : "claude-3-5-sonnet",
+        region: "us-east-1",
+      },
+    });
+  }
+
+  const allEvents = [...apiEvents, ...aiEvents];
+  for (let offset = 0; offset < allEvents.length; offset += 100) {
     await ingestEvents(ctx, {
-      events: events.slice(offset, offset + 100),
+      events: allEvents.slice(offset, offset + 100),
       allow_backfilling: true,
       allow_partial_failures: true,
     });
   }
 
-  const existingInvoice = await Invoice.findOne({
-    tenantId: ctx.tenantId,
-    subscriptionId: String(subscription._id),
-  });
-  if (!existingInvoice) {
-    await generateInvoices(ctx, {
-      subscriptionId: String(subscription._id),
-      periodStart: monthStart.toISOString(),
-      periodEnd: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(),
-      finalize: true,
+  // 14. Generated & Finalized Invoices
+  console.log("Generating finalized invoices for subscriptions...");
+  const subs = [subAcme, subCyber, subNova];
+  for (const sub of subs) {
+    const existing = await Invoice.findOne({ tenantId: ctx.tenantId, subscriptionId: String(sub._id) });
+    if (!existing) {
+      try {
+        await generateInvoices(ctx, {
+          subscriptionId: String(sub._id),
+          periodStart: monthStart.toISOString(),
+          periodEnd: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(),
+          finalize: true,
+        });
+      } catch (err) {
+        console.warn(`Invoice generation note for ${sub._id}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  // 15. Webhook Endpoints
+  let wh = await Webhook.findOne({ tenantId: ctx.tenantId });
+  if (!wh) {
+    wh = await Webhook.create({
+      tenantId: ctx.tenantId,
+      url: "https://api.acme.example/webhooks/brightloop",
+      secretCipher: encryptSecret("whsec_demo_secret_token_brightloop", config.INTERNAL_SECRET),
+      events: ["invoice.finalized", "subscription.created", "customer.created"],
+      enabled: true,
     });
   }
 
-  await OrganizationMember.updateOne({ orgId: ctx.orgId, userId: ctx.userId }, { $setOnInsert: { role: "owner" } }, { upsert: true });
-  await AppliedCoupon.deleteMany({ tenantId: ctx.tenantId, subscriptionId: String(subscription._id) });
-
-  console.log("BrightLoop seed complete");
-  console.log("Login: demo@brightloop.local / Demo1234");
-  console.log(`Tenant: ${ctx.tenantId}`);
-  console.log(`Plans: starter=${String(starter!._id)} growth=${String(growth!._id)}`);
-  console.log(`Customer: ${String(customer._id)} (alias: acme)`);
-  console.log(`Subscription: ${String(subscription._id)}`);
+  console.log("\n=======================================================");
+  console.log("🎉 Complete Test Database Seed Prepared Successfully!");
+  console.log("=======================================================");
+  console.log("🔑 Primary Admin Login:");
+  console.log("   Email:    demo@brightloop.local");
+  console.log("   Password: Demo1234");
+  console.log("   Tenant:   " + ctx.tenantId);
+  console.log("\n👥 Additional Team Accounts (password: Demo1234):");
+  console.log("   - member@brightloop.local (Alice Developer, Member role)");
+  console.log("   - viewer@brightloop.local (Bob Finance Analyst, Viewer role)");
+  console.log("\n🏢 Seeded Customers:");
+  console.log("   1. acme-corp       -> Acme Corporation (Starter Plan + API events)");
+  console.log("   2. cyber-dynamics  -> Cyber Dynamics LLC (Growth Plan + High API usage)");
+  console.log("   3. nova-labs       -> Nova AI Labs (Enterprise Plan + AI Token usage)");
+  console.log("   4. euro-retail     -> EuroRetail Group B.V. (EU Entity)");
+  console.log("\n📦 Plans & Add-ons:");
+  console.log("   - Developer Starter ($29/mo)");
+  console.log("   - Growth Pro ($149/mo)");
+  console.log("   - Enterprise Dedicated ($599/mo)");
+  console.log("   - Dedicated Static IP Add-on ($25/mo)");
+  console.log("\n🏷️ Coupons:");
+  console.log("   - WELCOME25 (25% off)");
+  console.log("   - FLAT50OFF ($50 off)");
+  console.log("=======================================================\n");
+} catch (error) {
+  console.error("Seed failed with error:", error);
+  throw error;
 } finally {
   await database.stop();
   await mongoose.disconnect().catch(() => undefined);
