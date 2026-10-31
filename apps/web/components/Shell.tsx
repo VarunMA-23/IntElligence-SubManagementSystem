@@ -151,7 +151,7 @@ export function Shell({ children }: { children: ReactNode }) {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link key={item.href} href={item.href} className={`nav-link ${active ? "active" : ""}`}>
-                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-icon"><Icon name={item.icon} /></span>
                   {item.label}
                 </Link>
               );

@@ -211,6 +211,7 @@ p {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .sidebar {
@@ -219,7 +220,7 @@ p {
   padding: 22px 16px;
   position: sticky;
   top: 0;
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -263,8 +264,10 @@ p {
 
 .nav-icon {
   width: 18px;
-  text-align: center;
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   opacity: 0.9;
 }
 
@@ -972,6 +975,46 @@ textarea.input {
   }
 }
 
+/* ── Missing utility classes ──────────────────────────────── */
+
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #fdf7e9;
+  border: 1px solid #f0dcab;
+  color: #6e5206;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.callout-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f4b740;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.danger-text {
+  color: var(--red);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.stack.sm {
+  gap: 6px;
+}
+
+/* ── End missing classes ──────────────────────────────────── */
+
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 1fr;
@@ -979,6 +1022,7 @@ textarea.input {
   .sidebar {
     position: relative;
     height: auto;
+    min-height: 0;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -1030,3 +1074,4 @@ textarea.input {
     align-items: flex-start;
   }
 }
+

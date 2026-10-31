@@ -9,7 +9,7 @@ const booleanish = z
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-  WEB_ORIGIN: z.string().default("http://localhost:3000"),
+  WEB_ORIGIN: z.string().default("http://localhost:8080"),
   MONGODB_URI: z.string().default("mongodb://localhost:27017/brightloop"),
   MONGODB_DB: z.string().optional(),
   USE_MEMORY_DB: booleanish,

@@ -37,7 +37,7 @@ tests/          Integration and end-to-end suites
 
 | Service | Port | Purpose |
 | --- | --- | --- |
-| Web | `3000` | Next.js dashboard |
+| Web | `8080` | Next.js dashboard |
 | API | `8080` | REST API at `/api/v1`, health at `/health` |
 | Worker | n/a | Outbox dispatch and webhook delivery polling |
 | MongoDB | `27017` | Primary datastore |
@@ -69,7 +69,7 @@ pnpm db:seed
 pnpm dev
 ```
 
-Open <http://localhost:3000> and sign in with the seeded account:
+Open <http://localhost:8080> and sign in with the seeded account:
 
 | Field | Value |
 | --- | --- |
@@ -91,7 +91,7 @@ Copy `.env.example` to `.env`. Important settings:
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `development`, `test` or `production` |
 | `PORT` | `8080` | API port |
-| `WEB_ORIGIN` | `http://localhost:3000` | CORS origin and email link base |
+| `WEB_ORIGIN` | `http://localhost:8080` | CORS origin and email link base |
 | `MONGODB_URI` | `mongodb://localhost:27017/brightloop` | MongoDB connection string |
 | `USE_MEMORY_DB` | `false` | Start an ephemeral in-memory MongoDB |
 | `JWT_SECRET` | development secret | Replace in production |

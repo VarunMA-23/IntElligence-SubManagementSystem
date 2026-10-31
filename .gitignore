@@ -28,6 +28,7 @@ storage/
 uploads/
 data/
 .mongo/
+.mongo-data/
 tmp/
 temp/
 
