@@ -1,21 +1,3 @@
-# BrightLoop
-
-BrightLoop is a self-hosted usage-based billing platform for SaaS teams. It brings customers, product catalogs, metered usage, plans, subscriptions, invoices, credit notes, webhooks and tenant administration into one workspace.
-
-Built with TypeScript across a pnpm monorepo: MongoDB + Express on the API, Next.js on the web app, and shared domain packages for billing, metering and integrations.
-
-## Highlights
-
-- **Organizations and tenants** with owner/admin/member/viewer roles and tenant switching.
-- **Customers** with aliases, billing details, tax settings and archived lifecycle.
-- **Catalog** for product families, products, features, billable metrics, add-ons and coupons.
-- **Plans** with versioned, publishable pricing. Flat, per-unit, package, tiered and volume pricing are supported.
-- **Subscriptions** with trials, billing anchors, net terms, coupons, add-ons and cancellation.
-- **Metering** with COUNT, LATEST, MAX, MIN, MEAN, SUM and COUNT_DISTINCT aggregations, segmentation keys and idempotent event ingestion.
-- **Invoices** generated from recurring and usage charges, with tax, coupons, finalization, sequential numbering, PDFs and credit notes.
-- **Webhooks** with HMAC signatures, retries with backoff, a dead-letter queue and manual replay.
-- **API tokens** for server-to-server metering, plus a customer portal token flow.
-- **Audit activities**, idempotency keys, batch jobs and internal billing/outbox workers.
 
 ## Architecture
 
