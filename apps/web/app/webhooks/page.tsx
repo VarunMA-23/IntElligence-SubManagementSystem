@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { Empty, ErrorBox, Loading, Modal, PageHeader, StatusPill, Toast } from "@/components/ui";
-import { apiFetch, date, time, titleCase } from "@/lib/api";
+import { apiFetch, date, time } from "@/lib/api";
 
 const EVENTS = [
   "customer.created",

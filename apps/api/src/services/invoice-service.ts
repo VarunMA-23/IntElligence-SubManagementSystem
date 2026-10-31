@@ -10,7 +10,6 @@ import {
   type TenantContext,
 } from "@brightloop/shared";
 import {
-  AddOn,
   AppliedCoupon,
   Coupon,
   CreditNote,
@@ -22,7 +21,6 @@ import {
   PlanVersion,
   PriceComponent,
   Subscription,
-  SubscriptionAddOn,
   SubscriptionComponent,
 } from "@brightloop/db";
 import { calculateAmount } from "@brightloop/billing";

@@ -12,7 +12,7 @@ const baseOptions = { versionKey: false, minimize: false } as const;
 
 const idField = { type: String, default: () => newId() } as const;
 
-function tenantIndexes(schema: Schema, collection: string) {
+function _tenantIndexes(schema: Schema, collection: string) {
   schema.index({ tenantId: 1, createdAt: -1 });
   void collection;
   return schema;
