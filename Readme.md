@@ -38,7 +38,7 @@ tests/          Integration and end-to-end suites
 | Service | Port | Purpose |
 | --- | --- | --- |
 | Web | `8080` | Next.js dashboard |
-| API | `8080` | REST API at `/api/v1`, health at `/health` |
+| API | `8081` | REST API at `/api/v1`, health at `/health` |
 | Worker | n/a | Outbox dispatch and webhook delivery polling |
 | MongoDB | `27017` | Primary datastore |
 | MailHog | `1025` / `8025` | Local SMTP and web inbox (optional) |
@@ -90,7 +90,7 @@ Copy `.env.example` to `.env`. Important settings:
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `development`, `test` or `production` |
-| `PORT` | `8080` | API port |
+| `PORT` | `8081` | API port |
 | `WEB_ORIGIN` | `http://localhost:8080` | CORS origin and email link base |
 | `MONGODB_URI` | `mongodb://localhost:27017/brightloop` | MongoDB connection string |
 | `USE_MEMORY_DB` | `false` | Start an ephemeral in-memory MongoDB |
@@ -104,7 +104,7 @@ Copy `.env.example` to `.env`. Important settings:
 | `WEBHOOK_MAX_ATTEMPTS` | `5` | Delivery retry limit |
 | `PORTAL_TOKEN_TTL_MINUTES` | `1440` | Customer portal link lifetime |
 
-The web app reads `NEXT_PUBLIC_API_URL` and defaults to `http://localhost:8080/api/v1`.
+The web app reads `NEXT_PUBLIC_API_URL` and defaults to `http://localhost:8081/api/v1`.
 
 ## Commands
 
